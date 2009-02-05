@@ -98,7 +98,7 @@ public class Rygel.TestRootContainer : MediaContainer {
 /**
  * Represents Test audio item.
  */
-public class Rygel.TestItem : Rygel.TestItem {
+public class Rygel.TestItem : Rygel.MediaItem {
 
     const string TEST_ID = "sine-wave";
     const string TEST_TITLE = "Sine Wave";
