@@ -28,8 +28,8 @@ using Gee;
 using Gst;
 
 [ModuleInit]
-public Plugin load_plugin () {
-    Plugin plugin = new Plugin ("Test");
+public void module_init (PluginLoader loader) {
+    var plugin = new Rygel.Plugin.MediaServer ("Test", "Test Streams");
 
     // We only implement a ContentDirectory service
     var resource_info = new ResourceInfo (ContentDirectory.UPNP_ID,
@@ -39,16 +39,17 @@ public Plugin load_plugin () {
 
     plugin.add_resource (resource_info);
 
-    return plugin;
+    loader.add_plugin (plugin);
 }
 
 /**
  * Implementation of ContentDirectory service, meant for testing purposes only.
  */
 public class Rygel.TestContentDir : ContentDirectory {
-
+    /* Pubic methods */
     public override MediaContainer? create_root_container () {
-        return new TestRootContainer ();
+        string friendly_name = this.root_device.get_friendly_name ();
+        return new TestRootContainer (friendly_name);
     }
 }
 
@@ -59,29 +60,52 @@ public class Rygel.TestRootContainer : MediaContainer {
 
     private ArrayList<MediaItem> items;
 
-    public TestRootContainer () {
-        base.root ("Test Title", 0);
+    public TestRootContainer (string title) {
+        base.root (title, 0);
 
         this.items = new ArrayList<MediaItem> ();
-        this.items.add (new TestItem ("sinewave",      // ID
-                                      this.id,         // ParentID
-                                      "Sine Wave"));   // Title
+        this.items.add (new TestItem (this));
 
         // Now we know how many top-level items we have
         this.child_count = this.items.size;
     }
 
-    public override Gee.List<MediaObject>? get_children (uint offset,
-                                                         uint max_count)
-                                                         throws GLib.Error {
+    public override void get_children (uint               offset,
+                                       uint               max_count,
+                                       Cancellable?       cancellable,
+                                       AsyncReadyCallback callback) {
         uint stop = offset + max_count;
 
         stop = stop.clamp (0, this.child_count);
-        return this.items.slice ((int) offset, (int) stop);
+        var children = this.items.slice ((int) offset, (int) stop);
+
+        var res = new Rygel.SimpleAsyncResult<Gee.List<MediaObject>>
+                                            (this,
+                                             callback);
+        res.data = children;
+        res.complete_in_idle ();
     }
 
-    public override MediaObject? find_object (string id) throws GLib.Error {
+    public override Gee.List<MediaObject>? get_children_finish (
+                                                         AsyncResult res)
+                                                         throws GLib.Error {
+        var simple_res = (Rygel.SimpleAsyncResult<Gee.List<MediaObject>>) res;
+        return simple_res.data;
+    }
+
+    public override void find_object (string             id,
+                                      Cancellable?       cancellable,
+                                      AsyncReadyCallback callback) {
+        var res = new Rygel.SimpleAsyncResult<string> (this, callback);
+
+        res.data = id;
+        res.complete_in_idle ();
+    }
+
+    public override MediaObject? find_object_finish (AsyncResult res)
+                                                     throws Error {
         MediaItem item = null;
+        var id = ((Rygel.SimpleAsyncResult<string>) res).data;
 
         foreach (MediaItem tmp in this.items) {
             if (id == tmp.id) {
@@ -105,8 +129,8 @@ public class Rygel.TestItem : Rygel.MediaItem {
     const string TEST_AUTHOR = "Zeeshan Ali (Khattak)";
     const string TEST_MIMETYPE = "audio/x-wav";
 
-    public TestItem (string parent_id) {
-        base (TEST_ID, parent_id, TEST_TITLE, MediaItem.AUDIO_CLASS);
+    public TestItem (MediaContainer parent) {
+        base (TEST_ID, parent, TEST_TITLE, MediaItem.AUDIO_CLASS);
 
         this.mime_type = TEST_MIMETYPE;
         this.author = TEST_AUTHOR;
